@@ -81,11 +81,14 @@ dependencies {
     implementation(libs.material.icons.extended)
 
     // Testing
-    testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
+     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
 
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
@@ -127,4 +130,7 @@ dependencies {
 
     implementation("androidx.compose.material:material-icons-extended")
 
+   }
+tasks.withType<Test>().configureEach {
+    jvmArgs("-Dnet.bytebuddy.experimental=true")
 }

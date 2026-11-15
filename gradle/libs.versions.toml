@@ -19,6 +19,9 @@ navigation = "2.10.2"
 coil = "3.3.0"
 ksp = "2.3.6"
 hilt = "2.60.1"
+mockk = "1.14.5"
+coroutines-test = "1.10.2"
+turbine = "1.2.1"
 
 [libraries]
 
@@ -39,6 +42,11 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines-test" }
+
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 # Network
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "retrofit" }
