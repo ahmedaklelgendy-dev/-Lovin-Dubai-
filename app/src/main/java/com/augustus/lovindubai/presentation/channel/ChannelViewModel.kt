@@ -4,32 +4,53 @@ package com.augustus.lovindubai.presentation.channel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import com.augustus.lovindubai.domain.model.Channel
+import com.augustus.lovindubai.domain.model.Video
 import com.augustus.lovindubai.domain.model.VideoType
 import com.augustus.lovindubai.domain.usecase.GetChannelUseCase
-import com.augustus.lovindubai.domain.usecase.GetVideosUseCase
+import com.augustus.lovindubai.domain.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChannelViewModel @Inject constructor(
     private val getChannelUseCase: GetChannelUseCase,
-    private val getVideosUseCase: GetVideosUseCase
+    private val repository: YouTubeRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChannelUiState())
+    val uiState: StateFlow<ChannelUiState> = _uiState.asStateFlow()
 
-    val uiState: StateFlow<ChannelUiState> =
-        _uiState.asStateFlow()
+    private val playlistId = MutableStateFlow<String?>(null)
+
+    val videos: kotlinx.coroutines.flow.Flow<PagingData<Video>> =
+        playlistId
+            .flatMapLatest { id ->
+                if (id.isNullOrBlank()) {
+                    kotlinx.coroutines.flow.flowOf(PagingData.empty())
+                } else {
+                    repository.getPagedVideos(id)
+                }
+            }
+            .cachedIn(viewModelScope)
 
     init {
         loadChannel()
     }
 
     fun loadChannel() {
+        if (_uiState.value.isLoading) return
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isLoading = true,
@@ -40,130 +61,91 @@ class ChannelViewModel @Inject constructor(
                 val channel = getChannelUseCase()
 
                 _uiState.value = _uiState.value.copy(
+                    channel = channel,
                     isLoading = false,
-                    channel = channel
+                    error = null
                 )
 
-                loadVideos(channel.uploadsPlaylistId)
-                 } catch (e: Exception) {
+                playlistId.value = channel.uploadsPlaylistId
+
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("ChannelViewModel", "Failed to load channel", e)
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Something went wrong"
+                    error = e.message ?: "Failed to load channel"
                 )
             }
         }
     }
 
-    private suspend fun loadVideos(playlistId: String) {
-        _uiState.value = _uiState.value.copy(
-            isVideosLoading = true,
-            videosError = null,
-            nextPageToken = null,
-            loadMoreError = null
-        )
+    fun refresh() {
+        val channel = _uiState.value.channel ?: return
 
-        try {
-            val result = getVideosUseCase(
-                playlistId = playlistId,
-                pageToken = null
-            )
-            Log.d("VideoStats", "Total fetched: ${result.videos.size}")
-
-            Log.d(
-                "VideoStats",
-                "Shorts: ${result.videos.count { it.type == VideoType.SHORT }}"
-            )
-
-            Log.d(
-                "VideoStats",
-                "Regular: ${result.videos.count { it.type == VideoType.REGULAR }}"
-            )
-
-            Log.d(
-                "VideoStats",
-                "Live: ${result.videos.count {
-                    it.type == VideoType.LIVE_ACTIVE ||
-                            it.type == VideoType.LIVE_UPCOMING ||
-                            it.type == VideoType.LIVE_RECORDED
-                }}"
-            )
-
-            Log.d("VideoStats", "Next page token: ${result.nextPageToken}")
-            _uiState.value = _uiState.value.copy(
-                videos = result.videos,
-                nextPageToken = result.nextPageToken,
-                isVideosLoading = false,
-                videosError = null
-            )
-        } catch (e: Exception) {
-            _uiState.value = _uiState.value.copy(
-                isVideosLoading = false,
-                videosError = e.message ?: "Failed to load videos"
-            )
-        }
-    }
-
-    fun loadNextPage() {
-        val currentState = _uiState.value
-        val playlistId = currentState.channel?.uploadsPlaylistId
-        val pageToken = currentState.nextPageToken
-
-        // Prevent duplicate requests
-        if (
-            currentState.isVideosLoading ||
-            currentState.isLoadingMore ||
-            pageToken == null ||
-            playlistId == null
-        ) {
-            return
-        }
+        if (_uiState.value.isRefreshing) return
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
-                isLoadingMore = true,
-                loadMoreError = null
+                isRefreshing = true,
+                error = null
             )
 
             try {
-                val result = getVideosUseCase(
-                    playlistId = playlistId,
-                    pageToken = pageToken
-                )
-
-                val latestVideos = _uiState.value.videos
-                val existingIds = latestVideos.map { it.id }.toSet()
-
-                val newVideos = result.videos.filter { it.id !in existingIds }
+                val updatedChannel = getChannelUseCase()
 
                 _uiState.value = _uiState.value.copy(
-                    videos = latestVideos + newVideos,
-                    nextPageToken = result.nextPageToken,
-                    isLoadingMore = false,
-                    loadMoreError = null
+                    channel = updatedChannel,
+                    error = null
                 )
+
+                // Trigger a new Paging generation.
+                playlistId.value = updatedChannel.uploadsPlaylistId
+
+                if (playlistId.value == channel.uploadsPlaylistId) {
+                    // Same playlist: UI can also call LazyPagingItems.refresh()
+                    // to explicitly refresh the current Paging generation.
+                }
+
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                Log.e("ChannelViewModel", "Refresh failed", e)
+
                 _uiState.value = _uiState.value.copy(
-                    isLoadingMore = false,
-                    loadMoreError = e.message ?: "Failed to load more videos"
+                    error = e.message ?: "Failed to refresh channel"
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    isRefreshing = false
                 )
             }
         }
     }
 
-    val shorts: List<com.augustus.lovindubai.domain.model.Video>
-        get() = _uiState.value.videos.filter {
-            it.type == VideoType.SHORT
-        }
+    fun onVideosLoaded(videos: List<Video>) {
+        Log.d("VideoStats", "Loaded videos: ${videos.size}")
 
-    val regularVideos: List<com.augustus.lovindubai.domain.model.Video>
-        get() = _uiState.value.videos.filter {
-            it.type == VideoType.REGULAR
-        }
+        Log.d(
+            "VideoStats",
+            "Shorts: ${videos.count { it.type == VideoType.SHORT }}"
+        )
 
-    val liveVideos: List<com.augustus.lovindubai.domain.model.Video>
-        get() = _uiState.value.videos.filter {
-            it.type == VideoType.LIVE_ACTIVE ||
-                    it.type == VideoType.LIVE_UPCOMING ||
-                    it.type == VideoType.LIVE_RECORDED
-        }
+        Log.d(
+            "VideoStats",
+            "Regular: ${videos.count { it.type == VideoType.REGULAR }}"
+        )
+
+        Log.d(
+            "VideoStats",
+            "Live: ${
+                videos.count {
+                    it.type == VideoType.LIVE_ACTIVE ||
+                            it.type == VideoType.LIVE_UPCOMING ||
+                            it.type == VideoType.LIVE_RECORDED
+                }
+            }"
+        )
+    }
 }

@@ -2,6 +2,7 @@
 package com.augustus.lovindubai.data.repository
 
 import android.util.Log
+import androidx.paging.ExperimentalPagingApi
 import com.augustus.lovindubai.data.local.dao.ChannelDao
 import com.augustus.lovindubai.data.local.dao.VideoDao
 import com.augustus.lovindubai.data.local.entity.ChannelEntity
@@ -13,15 +14,24 @@ import com.augustus.lovindubai.domain.model.VideoPage
 import com.augustus.lovindubai.domain.model.VideoType
 import com.augustus.lovindubai.domain.repository.YouTubeRepository
 import kotlinx.coroutines.CancellationException
-import retrofit2.HttpException
-import javax.inject.Inject
+ import javax.inject.Inject
 import javax.inject.Singleton
-
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.map
+import com.augustus.lovindubai.data.local.database.LovinDatabase
+import com.augustus.lovindubai.data.local.dao.RemoteKeysDao
+import com.augustus.lovindubai.data.remote.mediator.YouTubeRemoteMediator
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 @Singleton
 class YouTubeRepositoryImpl @Inject constructor(
     private val api: YouTubeApiService,
     private val channelDao: ChannelDao,
-    private val videoDao: VideoDao
+    private val videoDao: VideoDao,
+    private val remoteKeysDao: RemoteKeysDao,
+    private val database: LovinDatabase
 ) : YouTubeRepository {
 
     override suspend fun getChannel(): Channel {
@@ -175,6 +185,39 @@ class YouTubeRepositoryImpl @Inject constructor(
             }
         }
     }
+
+    @OptIn(ExperimentalPagingApi::class)
+    override fun getPagedVideos(
+        playlistId: String
+    ): Flow<PagingData<Video>> {
+
+        return Pager(
+            config = PagingConfig(
+                pageSize = 50,
+                initialLoadSize = 50,
+                prefetchDistance = 10,
+                enablePlaceholders = false
+            ),
+
+            remoteMediator = YouTubeRemoteMediator(
+                playlistId = playlistId,
+                api = api,
+                database = database,
+                videoDao = videoDao,
+                remoteKeysDao = remoteKeysDao,
+                fetchVideoDetails = ::getVideoDetails
+            ),
+
+            pagingSourceFactory = {
+                videoDao.getVideosPagingSource()
+            }
+
+        ).flow.map { pagingData ->
+            pagingData.map { entity ->
+                entity.toDomain()
+            }
+        }
+    }
 }
 
 // Channel mapping
@@ -260,4 +303,6 @@ private fun isShortVideo(
                     durationInSeconds <= 60 &&
                     durationInSeconds > 0
             )
+
+
 }

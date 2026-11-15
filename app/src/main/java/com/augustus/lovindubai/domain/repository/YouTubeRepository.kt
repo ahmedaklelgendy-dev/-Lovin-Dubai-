@@ -1,11 +1,12 @@
 
 package com.augustus.lovindubai.domain.repository
 
+import androidx.paging.PagingData
 import com.augustus.lovindubai.domain.model.Channel
 import com.augustus.lovindubai.domain.model.Video
 import com.augustus.lovindubai.domain.model.VideoPage
-
-interface YouTubeRepository {
+import kotlinx.coroutines.flow.Flow
+ interface YouTubeRepository {
 
     suspend fun getChannel(): Channel
 
@@ -17,4 +18,9 @@ interface YouTubeRepository {
     suspend fun getVideoDetails(
         videoIds: List<String>
     ): List<Video>
+
+    // Paging 3
+    fun getPagedVideos(
+        playlistId: String
+    ): Flow<PagingData<Video>>
 }

@@ -1,204 +1,171 @@
+
 package com.augustus.lovindubai.presentation.channel
 
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.ui.unit.sp
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil3.compose.AsyncImage
 import com.augustus.lovindubai.domain.model.Video
 import com.augustus.lovindubai.domain.model.VideoType
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.collect
-import androidx.compose.runtime.snapshotFlow
-
-private val LovinOrange = Color(0xFFFF604A)
-private val LovinDark = Color(0xFF151515)
-private val LovinGray = Color(0xFF777777)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChannelScreen(
     viewModel: ChannelViewModel = hiltViewModel()
-) {
+)
+{
     val state by viewModel.uiState.collectAsState()
+    val pagingItems = viewModel.videos.collectAsLazyPagingItems()
+    val context = LocalContext.current
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    val listState = rememberLazyListState()
+    val loadedVideos = pagingItems.itemSnapshotList.items
 
-    var selectedTab by remember {
-        mutableIntStateOf(0)
-    }
-
-    // Filter videos according to the selected tab.
-    val filteredVideos = remember(state.videos, selectedTab) {
-        when (selectedTab) {
-            0 -> state.videos.filter {
-                it.type == VideoType.SHORT
-            }
-
-            1 -> state.videos.filter {
-                it.type == VideoType.REGULAR
-            }
-
-            else -> state.videos.filter {
-                it.type == VideoType.LIVE_ACTIVE ||
-                        it.type == VideoType.LIVE_UPCOMING ||
-                        it.type == VideoType.LIVE_RECORDED
-            }
+    fun matchesSelectedTab(video: Video): Boolean {
+        return when (selectedTab) {
+            0 -> video.type == VideoType.SHORT
+            1 -> video.type == VideoType.REGULAR
+            else -> video.type in listOf(
+                VideoType.LIVE_ACTIVE,
+                VideoType.LIVE_UPCOMING,
+                VideoType.LIVE_RECORDED
+            )
         }
     }
 
-    // Return to the top when changing tabs.
-    LaunchedEffect(selectedTab) {
-        listState.scrollToItem(0)
-    }
-
-    // Infinite scrolling.
-    LaunchedEffect(listState, selectedTab) {
-        snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-
-            val lastVisibleItem = layoutInfo.visibleItemsInfo
-                .lastOrNull()
-                ?.index ?: -1
-
-            lastVisibleItem to layoutInfo.totalItemsCount
-        }
-            .distinctUntilChanged()
-            .collect { (lastVisibleItem, totalItems) ->
-
-                if (
-                    totalItems > 0 &&
-                    lastVisibleItem >= totalItems - 3
-                ) {
-                    viewModel.loadNextPage()
-                }
-            }
+    val filteredCount = loadedVideos.count {
+        matchesSelectedTab(it)
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "LOVIN",
-                            fontWeight = FontWeight.ExtraBold
-                        )
-
-                        Text(
-                            text = " DUBAI",
-                            color = LovinOrange,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
+                    Text(
+                        text = "LOVIN DUBAI",
+                        fontWeight = FontWeight.Bold
+                    )
                 },
                 actions = {
                     Text(
                         text = "YOUTUBE",
-                        color = LovinOrange,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(end = 16.dp)
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .clickable {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://www.youtube.com/@LovinDubai")
+                                )
+                                context.startActivity(intent)
+                            },
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             )
         }
-    ) { padding ->
+    ) { paddingValues ->
 
         when {
-            state.isLoading -> {
-                Box(
+            state.isLoading && state.channel == null -> {
+                LoadingContent(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = LovinOrange
-                    )
-                }
+                        .padding(paddingValues)
+                )
             }
 
-            state.error != null -> {
+            state.error != null && state.channel == null -> {
                 ErrorContent(
-                    error = state.error ?: "Unknown error",
-                    onRetry = {
-                        viewModel.loadChannel()
-                    },
+                    message = state.error ?: "Something went wrong",
+                    onRetry = { viewModel.loadChannel() },
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
+                        .padding(paddingValues)
                 )
             }
 
             state.channel != null -> {
-
-                val channel = state.channel!!
-
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = padding,
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                PullToRefreshBox(
+                    isRefreshing = state.isRefreshing ||
+                            pagingItems.loadState.refresh is LoadState.Loading,
+                    onRefresh = {
+                        pagingItems.refresh()
+                        viewModel.refresh()
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
                 ) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
 
-                    // Channel Header
-                    item {
-                        ChannelHeader(
-                            title = channel.title,
-                            description = channel.description,
-                            thumbnailUrl = channel.thumbnailUrl
-                        )
-                    }
-
-                    // Channel Statistics
-                    item {
-                        Column(
-                            modifier = Modifier.padding(
-                                horizontal = 16.dp,
-                                vertical = 12.dp
+                        item {
+                            ChannelHeader(
+                                title = state.channel!!.title,
+                                description = state.channel!!.description,
+                                thumbnailUrl = state.channel!!.thumbnailUrl
                             )
-                        ) {
-                            Text(
-                                text = "CHANNEL OVERVIEW",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = LovinGray,
-                                fontWeight = FontWeight.Bold
-                            )
+                        }
 
-                            Spacer(
-                                modifier = Modifier.height(12.dp)
-                            )
-
+                        item {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 StatCard(
                                     title = "Subscribers",
                                     value = formatCount(
-                                        channel.subscriberCount
+                                        state.channel!!.subscriberCount
                                     ),
                                     modifier = Modifier.weight(1f)
                                 )
@@ -206,7 +173,7 @@ fun ChannelScreen(
                                 StatCard(
                                     title = "Total Views",
                                     value = formatCount(
-                                        channel.viewCount
+                                        state.channel!!.viewCount
                                     ),
                                     modifier = Modifier.weight(1f)
                                 )
@@ -214,179 +181,133 @@ fun ChannelScreen(
                                 StatCard(
                                     title = "Videos",
                                     value = formatCount(
-                                        channel.videoCount
+                                        state.channel!!.videoCount
                                     ),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
                         }
-                    }
 
-                    // Explore Content
-                    item {
-                        Column(
-                            modifier = Modifier.padding(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 24.dp,
-                                bottom = 12.dp
-                            )
-                        ) {
+                        item {
                             Text(
                                 text = "Explore Content",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(4.dp)
-                            )
-
-                            Text(
-                                text = "Discover the latest from Lovin Dubai",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = LovinGray
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(
+                                    horizontal = 16.dp,
+                                    vertical = 8.dp
+                                )
                             )
                         }
-                    }
 
-                    // Tabs
-                    item {
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            containerColor = Color.Transparent,
-                            contentColor = LovinOrange,
-                            divider = {}
-                        ) {
-                            listOf(
-                                "Shorts",
-                                "Videos",
-                                "Live"
-                            ).forEachIndexed { index, title ->
-
-                                Tab(
-                                    selected = selectedTab == index,
-                                    onClick = {
-                                        selectedTab = index
-                                    },
-                                    text = {
-                                        Text(
-                                            text = title,
-                                            fontWeight = if (
-                                                selectedTab == index
-                                            ) {
-                                                FontWeight.Bold
-                                            } else {
-                                                FontWeight.Normal
-                                            }
-                                        )
-                                    }
-                                )
+                        item {
+                            TabRow(selectedTabIndex = selectedTab) {
+                                listOf("Shorts", "Videos", "Live").forEachIndexed { index, title ->
+                                    Tab(
+                                        selected = selectedTab == index,
+                                        onClick = { selectedTab = index },
+                                        text = { Text(title) }
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // Content count
-                    item {
-                        Text(
-                            text = "${filteredVideos.size} videos",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = LovinGray,
-                            modifier = Modifier.padding(
-                                horizontal = 16.dp,
-                                vertical = 12.dp
-                            )
-                        )
-                    }
-
-                    // Initial loading
-                    if (
-                        state.isVideosLoading &&
-                        state.videos.isEmpty()
-                    ) {
-                        item {
-                            LoadingContent()
-                        }
-                    }
-
-                    // Initial error
-                    else if (
-                        state.videosError != null &&
-                        state.videos.isEmpty()
-                    ) {
                         item {
                             Text(
-                                text = state.videosError
-                                    ?: "Failed to load videos",
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
-                    }
-
-                    // Empty content
-                    else if (filteredVideos.isEmpty()) {
-                        item {
-                            EmptyContent(
-                                selectedTab = selectedTab
-                            )
-                        }
-                    }
-
-                    // Every video is now a separate LazyColumn item.
-                    else {
-                        items(
-                            items = filteredVideos,
-                            key = { video -> video.id }
-                        ) { video ->
-
-                            VideoCard(
-                                video = video,
+                                text = "$filteredCount loaded videos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(
                                     horizontal = 16.dp
                                 )
                             )
                         }
-                    }
 
-                    // Loading more indicator
-                    if (state.isLoadingMore) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    color = LovinOrange
+                        // Initial loading
+                        if (
+                            pagingItems.loadState.refresh is LoadState.Loading &&
+                            loadedVideos.isEmpty()
+                        ) {
+                            item {
+                                LoadingContent()
+                            }
+                        }
+
+                        // Initial loading error
+                        if (
+                            pagingItems.loadState.refresh is LoadState.Error &&
+                            loadedVideos.isEmpty()
+                        ) {
+                            item {
+                                ErrorContent(
+                                    message = (
+                                            pagingItems.loadState.refresh as LoadState.Error
+                                            ).error.localizedMessage
+                                        ?: "Failed to load videos",
+                                    onRetry = { pagingItems.retry() }
                                 )
                             }
                         }
-                    }
 
-                    // Load more error and retry
-                    if (state.loadMoreError != null) {
-                        item {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = state.loadMoreError
-                                        ?: "Couldn't load more videos",
-                                    color = MaterialTheme.colorScheme.error
-                                )
-
-                                TextButton(
-                                    onClick = {
-                                        viewModel.loadNextPage()
-                                    }
-                                ) {
-                                    Text("Tap to retry")
+                        // Paging videos
+                        if (pagingItems.itemCount > 0) {
+                            items(
+                                count = pagingItems.itemCount,
+                                key = { index ->
+                                    pagingItems.peek(index)?.id ?: "placeholder_$index"
                                 }
+                            ) { index ->
+
+                                // Accessing this index triggers Paging load hints.
+                                val video = pagingItems[index]
+
+                                if (video != null && matchesSelectedTab(video)) {
+                                    VideoCard(
+                                        video = video,
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // Empty state only after all pages are loaded
+                        if (
+                            pagingItems.loadState.refresh is LoadState.NotLoading &&
+                            pagingItems.loadState.append is LoadState.NotLoading &&
+                            pagingItems.loadState.append.endOfPaginationReached &&
+                            filteredCount == 0
+                        ) {
+                            item {
+                                EmptyContent(selectedTab)
+                            }
+                        }
+
+                        // Loading next page
+                        if (pagingItems.loadState.append is LoadState.Loading) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
+
+                        // Next page error
+                        if (pagingItems.loadState.append is LoadState.Error) {
+                            item {
+                                ErrorContent(
+                                    message = (
+                                            pagingItems.loadState.append as LoadState.Error
+                                            ).error.localizedMessage
+                                        ?: "Failed to load more videos",
+                                    onRetry = { pagingItems.retry() }
+                                )
                             }
                         }
                     }
@@ -405,74 +326,32 @@ private fun ChannelHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                horizontal = 16.dp,
-                vertical = 20.dp
-            )
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = thumbnailUrl,
-                contentDescription = "Channel profile image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(CircleShape)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant
-                    )
-            )
-
-            Spacer(
-                modifier = Modifier.width(16.dp)
-            )
-
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(
-                    modifier = Modifier.height(5.dp)
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(LovinOrange)
-                    )
-
-                    Spacer(
-                        modifier = Modifier.width(6.dp)
-                    )
-
-                    Text(
-                        text = "Official YouTube Channel",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = LovinGray
-                    )
-                }
-            }
-        }
-
-        Spacer(
-            modifier = Modifier.height(18.dp)
+        AsyncImage(
+            model = thumbnailUrl,
+            contentDescription = title,
+            modifier = Modifier
+                .size(100.dp)
+                .clip(RoundedCornerShape(50.dp)),
+            contentScale = ContentScale.Crop
         )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
 
         Text(
             text = description,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
         )
@@ -486,35 +365,27 @@ private fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.height(100.dp),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = LovinOrange,
-                maxLines = 1
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
             )
 
-            Spacer(
-                modifier = Modifier.height(5.dp)
-            )
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelSmall,
-                color = LovinGray,
-                maxLines = 1
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -530,61 +401,47 @@ private fun VideoCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 14.dp)
             .clickable {
                 val intent = Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse(
-                        "https://www.youtube.com/watch?v=${video.id}"
-                    )
+                    Uri.parse("https://www.youtube.com/watch?v=${video.id}")
                 )
-
                 context.startActivity(intent)
             },
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column {
+
             Box {
                 AsyncImage(
                     model = video.thumbnailUrl,
                     contentDescription = video.title,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(200.dp),
+                    contentScale = ContentScale.Crop
                 )
 
-                if (
-                    video.type == VideoType.LIVE_ACTIVE ||
-                    video.type == VideoType.LIVE_UPCOMING ||
-                    video.type == VideoType.LIVE_RECORDED
-                ) {
-                    Text(
-                        text = when (video.type) {
-                            VideoType.LIVE_ACTIVE -> "LIVE"
-                            VideoType.LIVE_UPCOMING -> "UPCOMING"
-                            else -> "LIVE STREAM"
-                        },
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(10.dp)
-                            .background(
-                                LovinOrange,
-                                RoundedCornerShape(5.dp)
-                            )
-                            .padding(
-                                horizontal = 8.dp,
-                                vertical = 5.dp
-                            )
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play video",
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                        )
+                        .padding(8.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
 
             Column(
-                modifier = Modifier.padding(14.dp)
+                modifier = Modifier.padding(12.dp)
             ) {
                 Text(
                     text = video.title,
@@ -594,31 +451,50 @@ private fun VideoCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(
-                    modifier = Modifier.height(6.dp)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "${formatCount(video.viewCount)} views",
+                    text = video.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = LovinGray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = formatCount(video.viewCount) + " views",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = video.publishedAt.take(10),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LoadingContent() {
+private fun LoadingContent(
+    modifier: Modifier = Modifier
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(40.dp),
+            .padding(32.dp),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator(
-            color = LovinOrange
-        )
+        CircularProgressIndicator()
     }
 }
 
@@ -626,71 +502,49 @@ private fun LoadingContent() {
 private fun EmptyContent(
     selectedTab: Int
 ) {
-    Column(
+    val message = when (selectedTab) {
+        0 -> "No Shorts available"
+        1 -> "No videos available"
+        else -> "No live videos available"
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            text = when (selectedTab) {
-                0 -> "No Shorts available"
-                1 -> "No videos available"
-                else -> "No live streams available"
-            },
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
-        Text(
-            text = "Content will appear here when available.",
-            color = LovinGray,
-            style = MaterialTheme.typography.bodySmall
+            text = message,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
 @Composable
 private fun ErrorContent(
-    error: String,
+    message: String,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.padding(24.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Something went wrong",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
-        Text(
-            text = error,
+            text = message,
             color = MaterialTheme.colorScheme.error
         )
 
-        Spacer(
-            modifier = Modifier.height(16.dp)
-        )
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Button(
-            onClick = onRetry,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = LovinOrange
-            )
+        androidx.compose.material3.Button(
+            onClick = onRetry
         ) {
-            Text("Try Again")
+            Text("Retry")
         }
     }
 }
@@ -698,22 +552,13 @@ private fun ErrorContent(
 private fun formatCount(count: Long): String {
     return when {
         count >= 1_000_000_000 ->
-            String.format(
-                "%.1fB",
-                count / 1_000_000_000.0
-            )
+            "%.1fB".format(count / 1_000_000_000.0)
 
         count >= 1_000_000 ->
-            String.format(
-                "%.1fM",
-                count / 1_000_000.0
-            )
+            "%.1fM".format(count / 1_000_000.0)
 
         count >= 1_000 ->
-            String.format(
-                "%.1fK",
-                count / 1_000.0
-            )
+            "%.1fK".format(count / 1_000.0)
 
         else -> count.toString()
     }

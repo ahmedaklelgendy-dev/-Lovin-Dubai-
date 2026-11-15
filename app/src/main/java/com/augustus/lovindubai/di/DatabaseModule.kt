@@ -1,9 +1,11 @@
+
 package com.augustus.lovindubai.data.local.di
 
 import android.content.Context
 import androidx.room.Room
-import com.augustus.lovindubai.data.local.LovinDatabase
+import com.augustus.lovindubai.data.local.database.LovinDatabase
 import com.augustus.lovindubai.data.local.dao.ChannelDao
+import com.augustus.lovindubai.data.local.dao.RemoteKeysDao
 import com.augustus.lovindubai.data.local.dao.VideoDao
 import dagger.Module
 import dagger.Provides
@@ -25,7 +27,8 @@ object DatabaseModule {
             context,
             LovinDatabase::class.java,
             "lovin_dubai_database"
-        ).build()
+        )        .addMigrations(LovinDatabase.MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -42,5 +45,13 @@ object DatabaseModule {
         database: LovinDatabase
     ): VideoDao {
         return database.videoDao()
+    }
+
+    @Provides
+    @Singleton
+    fun provideRemoteKeysDao(
+        database: LovinDatabase
+    ): RemoteKeysDao {
+        return database.remoteKeysDao()
     }
 }
