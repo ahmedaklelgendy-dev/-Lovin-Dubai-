@@ -1,4 +1,3 @@
-
 package com.augustus.lovindubai.presentation.channel
 
 import android.content.Intent
@@ -57,8 +56,7 @@ import com.augustus.lovindubai.domain.model.VideoType
 @Composable
 fun ChannelScreen(
     viewModel: ChannelViewModel = hiltViewModel()
-)
-{
+) {
     val state by viewModel.uiState.collectAsState()
     val pagingItems = viewModel.videos.collectAsLazyPagingItems()
     val context = LocalContext.current
@@ -78,9 +76,9 @@ fun ChannelScreen(
         }
     }
 
-    val filteredCount = loadedVideos.count {
-        matchesSelectedTab(it)
-    }
+    // تصفية الفيديوهات مسبقاً لمنع ترك مساحات فارغة في القائمة
+    val filteredVideos = loadedVideos.filter { matchesSelectedTab(it) }
+    val filteredCount = filteredVideos.size
 
     Scaffold(
         topBar = {
@@ -249,26 +247,18 @@ fun ChannelScreen(
                             }
                         }
 
-                        // Paging videos
-                        if (pagingItems.itemCount > 0) {
+                        // Paging videos (عرض العناصر المفلترة مباشرة دون مسافات فارغة)
+                        if (filteredVideos.isNotEmpty()) {
                             items(
-                                count = pagingItems.itemCount,
-                                key = { index ->
-                                    pagingItems.peek(index)?.id ?: "placeholder_$index"
-                                }
-                            ) { index ->
-
-                                // Accessing this index triggers Paging load hints.
-                                val video = pagingItems[index]
-
-                                if (video != null && matchesSelectedTab(video)) {
-                                    VideoCard(
-                                        video = video,
-                                        modifier = Modifier.padding(
-                                            horizontal = 16.dp
-                                        )
+                                items = filteredVideos,
+                                key = { video -> video.id }
+                            ) { video ->
+                                VideoCard(
+                                    video = video,
+                                    modifier = Modifier.padding(
+                                        horizontal = 16.dp
                                     )
-                                }
+                                )
                             }
                         }
 

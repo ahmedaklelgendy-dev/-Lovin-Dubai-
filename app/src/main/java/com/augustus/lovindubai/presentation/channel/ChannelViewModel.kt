@@ -1,4 +1,3 @@
-
 package com.augustus.lovindubai.presentation.channel
 
 import android.util.Log
@@ -13,15 +12,17 @@ import com.augustus.lovindubai.domain.usecase.GetChannelUseCase
 import com.augustus.lovindubai.domain.repository.YouTubeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ChannelViewModel @Inject constructor(
     private val getChannelUseCase: GetChannelUseCase,
@@ -33,11 +34,15 @@ class ChannelViewModel @Inject constructor(
 
     private val playlistId = MutableStateFlow<String?>(null)
 
+    // إضافة متغير للتبويب الحالي لتحديث جلب الـ Paging بناءً عليه إذا أردت، 
+    // أو سنقوم بتمريره للـ Repository إذا كان يدعم فلترة النوع.
+    private val selectedTabType = MutableStateFlow<VideoTypeTab>(VideoTypeTab.SHORTS)
+
     val videos: kotlinx.coroutines.flow.Flow<PagingData<Video>> =
         playlistId
             .flatMapLatest { id ->
                 if (id.isNullOrBlank()) {
-                    kotlinx.coroutines.flow.flowOf(PagingData.empty())
+                    flowOf(PagingData.empty())
                 } else {
                     repository.getPagedVideos(id)
                 }
@@ -48,23 +53,32 @@ class ChannelViewModel @Inject constructor(
         loadChannel()
     }
 
+    fun onTabSelected(tabIndex: Int) {
+        selectedTabType.value = when (tabIndex) {
+            0 -> VideoTypeTab.SHORTS
+            1 -> VideoTypeTab.REGULAR
+            else -> VideoTypeTab.LIVE
+        }
+    }
+
     fun loadChannel() {
         if (_uiState.value.isLoading) return
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                error = null
-            )
+            _uiState.update {
+                it.copy(isLoading = true, error = null)
+            }
 
             try {
                 val channel = getChannelUseCase()
 
-                _uiState.value = _uiState.value.copy(
-                    channel = channel,
-                    isLoading = false,
-                    error = null
-                )
+                _uiState.update {
+                    it.copy(
+                        channel = channel,
+                        isLoading = false,
+                        error = null
+                    )
+                }
 
                 playlistId.value = channel.uploadsPlaylistId
 
@@ -73,10 +87,12 @@ class ChannelViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("ChannelViewModel", "Failed to load channel", e)
 
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to load channel"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to load channel"
+                    )
+                }
             }
         }
     }
@@ -87,39 +103,34 @@ class ChannelViewModel @Inject constructor(
         if (_uiState.value.isRefreshing) return
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isRefreshing = true,
-                error = null
-            )
+            _uiState.update {
+                it.copy(isRefreshing = true, error = null)
+            }
 
             try {
                 val updatedChannel = getChannelUseCase()
 
-                _uiState.value = _uiState.value.copy(
-                    channel = updatedChannel,
-                    error = null
-                )
-
-                // Trigger a new Paging generation.
-                playlistId.value = updatedChannel.uploadsPlaylistId
-
-                if (playlistId.value == channel.uploadsPlaylistId) {
-                    // Same playlist: UI can also call LazyPagingItems.refresh()
-                    // to explicitly refresh the current Paging generation.
+                _uiState.update {
+                    it.copy(
+                        channel = updatedChannel,
+                        error = null
+                    )
                 }
+
+                playlistId.value = updatedChannel.uploadsPlaylistId
 
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e("ChannelViewModel", "Refresh failed", e)
 
-                _uiState.value = _uiState.value.copy(
-                    error = e.message ?: "Failed to refresh channel"
-                )
+                _uiState.update {
+                    it.copy(error = e.message ?: "Failed to refresh channel")
+                }
             } finally {
-                _uiState.value = _uiState.value.copy(
-                    isRefreshing = false
-                )
+                _uiState.update {
+                    it.copy(isRefreshing = false)
+                }
             }
         }
     }
@@ -148,4 +159,8 @@ class ChannelViewModel @Inject constructor(
             }"
         )
     }
+}
+
+enum class VideoTypeTab {
+    SHORTS, REGULAR, LIVE
 }
